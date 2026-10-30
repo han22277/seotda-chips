@@ -150,6 +150,7 @@ h3{margin:0 0 10px;font-size:16px}
       <button class="b-tool" id="seatBtn">자리<br>바꾸기</button>
       <button class="b-tool" id="resetBtn">칩<br>초기화</button>
     </div>
+    <button class="b-tool hidden" id="newRoomBtn" style="width:100%;margin-bottom:12px;padding:13px">새 방 설정 (처음 만들기 화면으로)</button>
   </div>
 </div>
 
@@ -407,6 +408,7 @@ function render(){
   }).join('');
   $('winBtns').innerHTML=rng().map(function(i){return '<button class="b-win" data-a="win" data-i="'+i+'"'+(folded(i)?' disabled':'')+'>'+esc(S.names[i])+'<br>승리</button>'}).join('');
   renderAdmin();
+  $('newRoomBtn').classList.toggle('hidden',role!=='host');
   $('log').innerHTML=S.log.length?S.log.map(function(l){return'<div>'+esc(l)+'</div>'}).join(''):'<span class="empty">아직 끝난 판이 없어요</span>';
 }
 
@@ -469,6 +471,13 @@ $('resumeBtn').onclick=function(){try{var d=JSON.parse(ls(HOST_KEY));hostStart(d
 $('redoBtn').onclick=function(){if(!pot()){toast('돌려줄 베팅이 없어요');return}ask('재경기할까요? 베팅한 칩을 각자 돌려줘요.',function(){act({t:'redo'})})};
 $('undoBtn').onclick=function(){if(!S.prev){toast('되돌릴 판이 없어요');return}ask('마지막 판 결과를 취소하고 그 판 베팅 상태로 되돌릴까요?',function(){act({t:'undo'})})};
 $('resetBtn').onclick=function(){ask('모든 사람 칩을 '+S.start+'개로 되돌리고 기록을 지울까요?',function(){act({t:'reset'})})};
+$('newRoomBtn').onclick=function(){
+  ask('지금 게임을 끝내고 처음 만들기 화면으로 갈까요? 이름·인원·시작 칩을 새로 정해요.',function(){
+    ls(HOST_KEY,null);ls(SEAT_KEY,null);
+    try{peer&&peer.destroy()}catch(e){}
+    location.replace(location.pathname+'?room='+code+'&host=1');
+  });
+};
 $('seatBtn').onclick=function(){mySeat=null;pending=null;ls(SEAT_KEY,null);act({t:'release'});render()};
 $('copyBtn').onclick=function(){
   var l=link();
