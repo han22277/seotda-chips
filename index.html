@@ -147,6 +147,8 @@ h3{margin:0 0 10px;font-size:16px}
 <script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
 <script>
 var N=3, PREFIX='seotda-chips-kr-', HOST_KEY='seotda-host-v3', SEAT_KEY='seotda-seat-v3';
+var CID=(function(){var c=null;try{c=localStorage.getItem('seotda-cid')}catch(e){}if(!c){c='c'+Math.random().toString(36).slice(2,10);try{localStorage.setItem('seotda-cid',c)}catch(e){}}return c})();
+var pending=null;
 var fixedCode=null,role=null, peer=null, hostConn=null, conns=[], code='', S=null, mySeat=null, retryTimer=null;
 
 function $(id){return document.getElementById(id)}
@@ -169,9 +171,26 @@ function freshBets(){return [0,1,2].map(function(){return{bet:0,folded:false}})}
 function clone(o){return JSON.parse(JSON.stringify(o))}
 
 /* ---------- 방장: 상태 변경 ---------- */
-function apply(a){
+var seen={};
+function online(c){return c===CID||(seen[c]&&Date.now()-seen[c]<12000&&conns.some(function(x){return x.open&&x.cid===c}))}
+function onFlags(){return S.seats.map(function(c){return !!c&&online(c)})}
+setInterval(function(){
+  if(role==='host'&&S&&S.seats){var f=JSON.stringify(onFlags());if(f!==JSON.stringify(S.on))broadcast()}
+  if(role==='guest'&&hostConn&&hostConn.open)hostConn.send({t:'ping',cid:CID});
+},4000);
+function apply(a,from){
   if(!S)return;
+  if(!S.seats)S.seats=[null,null,null];
   var i=a.i;
+  if(a.t==='claim'){
+    if(i>=0&&i<N&&(!S.seats[i]||S.seats[i]===from||!online(S.seats[i]))){
+      for(var k=0;k<N;k++)if(S.seats[k]===from)S.seats[k]=null;
+      S.seats[i]=from;
+    }
+    return broadcast();
+  }
+  if(a.t==='release'){for(var k2=0;k2<N;k2++)if(S.seats[k2]===from)S.seats[k2]=null;return broadcast()}
+  if((a.t==='bet'||a.t==='all'||a.t==='fold')&&S.seats[i]!==from)return;
   if(a.t==='bet'){
     if(folded(i))return;var amt=a.v;
     if(amt>0)amt=Math.min(amt,avail(i));else amt=Math.max(amt,-bet(i));
@@ -202,27 +221,32 @@ function apply(a){
   broadcast();
 }
 function broadcast(){
+  if(S&&S.seats)S.on=onFlags();
   ls(HOST_KEY,JSON.stringify({code:code,S:S}));
   conns.forEach(function(c){if(c.open)c.send({t:'state',S:S})});
   render();
 }
 function act(a){
-  if(role==='host')apply(a);
-  else if(hostConn&&hostConn.open)hostConn.send(a);
+  if(role==='host')apply(a,CID);
+  else if(hostConn&&hostConn.open){a.cid=CID;hostConn.send(a)}
   else toast('방장과 연결이 끊겼어요. 다시 연결 중…');
 }
 
 /* ---------- 연결 ---------- */
 function hostStart(c,state){
   role='host';code=c;S=state;
+  S.seats=[null,null,null];
   try{history.replaceState(null,'','?room='+code)}catch(e){}
   status('방 여는 중…');
   peer=new Peer(PREFIX+code,window.PEER_OPTS);
-  peer.on('open',function(){status('<b>방장</b> · 접속 0명');broadcast();restoreSeat();render()});
+  peer.on('open',function(){status('<b>방장</b> · 접속 0명');restoreSeat();if(mySeat!==null){S.seats[mySeat]=CID}mySeat=null;syncSeat();broadcast()});
   peer.on('connection',function(conn){
     conn.on('open',function(){conns.push(conn);conn.send({t:'state',S:S});updHostStatus()});
-    conn.on('data',function(d){if(d&&d.t)apply(d)});
-    conn.on('close',function(){conns=conns.filter(function(x){return x!==conn});updHostStatus()});
+    conn.on('data',function(d){if(d&&d.t){if(d.cid){conn.cid=String(d.cid);seen[conn.cid]=Date.now()}if(d.t!=='ping')apply(d,conn.cid)}});
+    conn.on('close',function(){conns=conns.filter(function(x){return x!==conn});updHostStatus();
+      if(conn.cid&&S&&S.seats&&!conns.some(function(x){return x.open&&x.cid===conn.cid})){
+        var ch=false;for(var k=0;k<N;k++)if(S.seats[k]===conn.cid){S.seats[k]=null;ch=true}if(ch)broadcast();
+      }});
   });
   peer.on('disconnected',function(){status('서버 연결이 끊겨 다시 연결 중…');setTimeout(function(){if(peer&&!peer.destroyed)peer.reconnect()},2000)});
   peer.on('error',function(e){
@@ -251,7 +275,7 @@ function connectHost(){
   hostConn.on('open',function(){status('<b>연결됨</b> · 방 '+code)});
   hostConn.on('data',function(d){
     if(d&&d.t==='state'){
-      var old=S&&S.fid;S=d.S;restoreSeat();
+      var old=S&&S.fid;S=d.S;if(!S.seats)S.seats=[null,null,null];syncSeat();
       if(S.flash&&S.fid!==old&&old!==undefined)toast(S.flash);
       render();
     }
@@ -261,14 +285,34 @@ function connectHost(){
 function scheduleRetry(){clearTimeout(retryTimer);retryTimer=setTimeout(function(){if(peer&&!peer.destroyed&&!peer.disconnected)connectHost()},3000)}
 
 /* ---------- 화면 ---------- */
+function syncSeat(){
+  if(!S||!S.seats)return;
+  var mine=S.seats.indexOf(CID);
+  if(mine>=0){mySeat=mine;pending=null;ls(SEAT_KEY,code+':'+mine);return}
+  if(pending!==null){
+    if(S.seats[pending]&&S.seats[pending]!==CID&&(!S.on||S.on[pending])){toast(S.names[pending]+' 자리는 이미 다른 사람이 골랐어요');pending=null}
+    mySeat=null;return;
+  }
+  mySeat=null;
+  var v=ls(SEAT_KEY);
+  if(v&&role==='guest'){var p=v.split(':');if(p[0]===code&&(!S.seats[+p[1]]||(S.on&&!S.on[+p[1]]))){pending=+p[1];act({t:'claim',i:pending})}}
+}
 function restoreSeat(){var v=ls(SEAT_KEY);mySeat=null;if(v){var p=v.split(':');if(p[0]===code)mySeat=+p[1]}}
-function pickSeat(i){mySeat=i;ls(SEAT_KEY,code+':'+i);render()}
+function pickSeat(i){
+  if(S.seats&&S.seats[i]&&S.seats[i]!==CID&&(!S.on||S.on[i])){toast('이미 다른 사람이 고른 자리예요');return}
+  pending=i;act({t:'claim',i:i});
+  if(role==='host'){syncSeat()}
+  render();
+}
 
 function render(){
   if(!S){show('home');return}
   if(mySeat===null){
     show('seat');
-    $('seatBtns').innerHTML=S.names.map(function(n,i){return '<button class="b-seat" data-a="seat" data-i="'+i+'">'+esc(n)+'</button>'}).join('');
+    $('seatBtns').innerHTML=S.names.map(function(n,i){
+      var taken=S.seats&&S.seats[i]&&S.seats[i]!==CID&&(!S.on||S.on[i]);
+      var wait=pending===i;
+      return '<button class="b-seat" data-a="seat" data-i="'+i+'"'+(taken||wait?' disabled':'')+'>'+esc(n)+(taken?' (사용 중)':wait?' (확인 중…)':'')+'</button>'}).join('');
     return;
   }
   show('game');
@@ -325,7 +369,7 @@ $('resumeBtn').onclick=function(){try{var d=JSON.parse(ls(HOST_KEY));hostStart(d
 $('redoBtn').onclick=function(){if(!pot()){toast('돌려줄 베팅이 없어요');return}ask('재경기할까요? 베팅한 칩을 각자 돌려줘요.',function(){act({t:'redo'})})};
 $('undoBtn').onclick=function(){if(!S.prev){toast('되돌릴 판이 없어요');return}ask('마지막 판 결과를 취소하고 그 판 베팅 상태로 되돌릴까요?',function(){act({t:'undo'})})};
 $('resetBtn').onclick=function(){ask('모든 사람 칩을 '+S.start+'개로 되돌리고 기록을 지울까요?',function(){act({t:'reset'})})};
-$('seatBtn').onclick=function(){mySeat=null;ls(SEAT_KEY,null);render()};
+$('seatBtn').onclick=function(){mySeat=null;pending=null;ls(SEAT_KEY,null);act({t:'release'});render()};
 $('copyBtn').onclick=function(){
   var l=link();
   if(navigator.clipboard)navigator.clipboard.writeText(l).then(function(){toast('링크를 복사했어요')},function(){prompt('이 링크를 복사하세요',l)});
