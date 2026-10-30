@@ -37,6 +37,9 @@ button:disabled{opacity:.35;cursor:default}
 .turn{box-shadow:0 0 0 4px #4cd17a}
 .tt{font-size:12px;background:#1f7a46;color:#fff;border-radius:6px;padding:2px 6px;margin-left:6px;vertical-align:middle}
 .b-done{background:#1f7a46;color:#fff;width:100%;margin-top:6px;font-size:17px;padding:13px}
+.arow{display:grid;grid-template-columns:1fr auto auto;gap:6px;margin-bottom:6px}
+.arow input{font-size:16px;padding:8px 10px}
+.arow button{font-size:14px;padding:8px 10px}
 .wait{text-align:center;color:#7a6a4a;font-size:14px;margin-top:6px}
 .pot .turnnow{font-size:16px;font-weight:700;color:#1f5132;margin-top:4px}
 .me{font-size:12px;background:#e0b43c;color:#3a2a00;border-radius:6px;padding:2px 6px;margin-left:6px;vertical-align:middle}
@@ -77,9 +80,11 @@ h3{margin:0 0 10px;font-size:16px}
   <div id="home">
     <div class="card">
       <h3>방 만들기 (방장)</h3>
-      <label>플레이어 1</label><input type="text" id="n0" value="플레이어1" maxlength="10">
-      <label>플레이어 2</label><input type="text" id="n1" value="플레이어2" maxlength="10">
-      <label>플레이어 3</label><input type="text" id="n2" value="플레이어3" maxlength="10">
+      <div id="nameList"></div>
+      <div class="row" style="grid-template-columns:1fr 1fr;margin-top:8px">
+        <button class="b-sub" id="setupMinus">− 인원 빼기</button>
+        <button class="b-add" id="setupPlus">+ 인원 추가</button>
+      </div>
       <label>시작 칩 (1인당)</label><input type="number" id="startChips" value="100" min="1" inputmode="numeric">
       <button class="primary" id="createBtn">방 만들기</button>
     </div>
@@ -125,6 +130,16 @@ h3{margin:0 0 10px;font-size:16px}
       <button class="b-redo" id="redoBtn">재경기 (베팅한 칩 돌려주기)</button>
     </div>
 
+    <div class="card hidden" id="adminCard">
+      <h3>플레이어 관리 (방장만 보여요)</h3>
+      <div id="adminList"></div>
+      <div class="row" style="grid-template-columns:1fr auto;margin-top:8px">
+        <input type="text" id="addName" maxlength="10" placeholder="새 플레이어 이름">
+        <button class="b-add" id="addBtn">추가</button>
+      </div>
+      <div class="wait" id="adminHint"></div>
+    </div>
+
     <div class="card">
       <h3>기록</h3>
       <div class="log" id="log"></div>
@@ -151,7 +166,7 @@ h3{margin:0 0 10px;font-size:16px}
 
 <script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
 <script>
-var N=3, PREFIX='seotda-chips-kr-', HOST_KEY='seotda-host-v3', SEAT_KEY='seotda-seat-v3';
+var N=3, MAXP=6, MINP=2, PREFIX='seotda-chips-kr-', HOST_KEY='seotda-host-v3', SEAT_KEY='seotda-seat-v3';
 var CID=(function(){var c=null;try{c=localStorage.getItem('seotda-cid')}catch(e){}if(!c){c='c'+Math.random().toString(36).slice(2,10);try{localStorage.setItem('seotda-cid',c)}catch(e){}}return c})();
 var pending=null;
 var fixedCode=null,role=null, peer=null, hostConn=null, conns=[], code='', S=null, mySeat=null, retryTimer=null;
@@ -175,7 +190,14 @@ function avail(i){return S.chips[i]-bet(i)}
 function turn(){return (S&&typeof S.turn==='number')?S.turn:0}
 function starter(){return (S&&typeof S.starter==='number')?S.starter:0}
 function nextActive(i){for(var k=1;k<=N;k++){var j=(i+k)%N;if(!folded(j))return j}return i}
-function freshBets(){return [0,1,2].map(function(){return{bet:0,folded:false}})}
+function rng(){var a=[];for(var i=0;i<N;i++)a.push(i);return a}
+function freshBets(){return rng().map(function(){return{bet:0,folded:false}})}
+function fixN(){
+  if(!S)return;N=S.names.length;
+  if(!S.seats||S.seats.length!==N){var o=S.seats||[];S.seats=rng().map(function(i){return o[i]||null})}
+  if(!S.bets||S.bets.length!==N){var ob=S.bets||[];S.bets=rng().map(function(i){return ob[i]||{bet:0,folded:false}})}
+  if(turn()>=N)S.turn=0;if(starter()>=N)S.starter=0;
+}
 function clone(o){return JSON.parse(JSON.stringify(o))}
 
 /* ---------- 방장: 상태 변경 ---------- */
@@ -188,8 +210,9 @@ setInterval(function(){
 },4000);
 function apply(a,from){
   if(!S)return;
-  if(!S.seats)S.seats=[null,null,null];
+  fixN();
   var i=a.i;
+  if(a.t==='rename'||a.t==='add'||a.t==='remove'){if(from!==CID)return;return admin(a)}
   if(a.t==='claim'){
     if(i>=0&&i<N&&(!S.seats[i]||S.seats[i]===from||!online(S.seats[i]))){
       for(var k=0;k<N;k++)if(S.seats[k]===from)S.seats[k]=null;
@@ -218,7 +241,7 @@ function apply(a,from){
     var total=pot();if(!total||folded(a.w))return;
     var bets=S.bets.map(function(b){return b.bet});
     S.prev={chips:S.chips.slice(),round:S.round,log:S.log.slice(),bets:bets,starter:starter(),turn:turn()};
-    var detail=[0,1,2].filter(function(k){return bets[k]>0}).map(function(k){return S.names[k]+' '+bets[k]}).join(', ');
+    var detail=rng().filter(function(k){return bets[k]>0}).map(function(k){return S.names[k]+' '+bets[k]}).join(', ');
     S.chips=S.chips.map(function(c,k){return c-bets[k]});S.chips[a.w]+=total;
     S.log.unshift(S.round+'판: '+S.names[a.w]+' 승리, +'+total+'개 ('+detail+')');S.log=S.log.slice(0,50);
     S.round++;S.bets=freshBets();S.starter=(a.w+1)%N;S.turn=S.starter;S.flash=S.names[a.w]+'님 +'+total+'개!';S.fid=Date.now();
@@ -229,9 +252,28 @@ function apply(a,from){
     if(!S.prev)return;var p=S.prev;
     S.chips=p.chips;S.round=p.round;S.log=p.log;S.bets=p.bets.map(function(b){return{bet:b,folded:false}});S.starter=p.starter||0;S.turn=(typeof p.turn==='number')?p.turn:S.starter;S.prev=null;
   }else if(a.t==='reset'){
-    S.chips=[S.start,S.start,S.start];S.round=1;S.log=[];S.prev=null;S.bets=freshBets();S.starter=0;S.turn=0;
+    S.chips=S.names.map(function(){return S.start});S.round=1;S.log=[];S.prev=null;S.bets=freshBets();S.starter=0;S.turn=0;
   }
   broadcast();
+}
+function admin(a){
+  var nm=String(a.name||'').trim().slice(0,10);
+  if(a.t==='rename'){
+    if(!nm||a.i<0||a.i>=N)return;
+    if(S.names[a.i]!==nm){S.log.unshift(S.names[a.i]+' → '+nm+' 이름 변경');S.log=S.log.slice(0,50);S.names[a.i]=nm}
+  }else if(a.t==='add'){
+    if(N>=MAXP||pot()>0)return;
+    nm=nm||('플레이어'+(N+1));
+    S.names.push(nm);S.chips.push(S.start);S.bets.push({bet:0,folded:false});S.seats.push(null);
+    S.log.unshift(nm+' 참가 (칩 '+S.start+'개)');S.log=S.log.slice(0,50);S.prev=null;
+  }else if(a.t==='remove'){
+    if(N<=MINP||pot()>0||a.i<0||a.i>=N)return;
+    S.log.unshift(S.names[a.i]+' 나감 (남은 칩 '+S.chips[a.i]+'개)');S.log=S.log.slice(0,50);
+    ['names','chips','bets','seats'].forEach(function(k){S[k].splice(a.i,1)});
+    if(turn()>a.i)S.turn--;if(starter()>a.i)S.starter--;
+    S.prev=null;
+  }
+  fixN();broadcast();
 }
 function broadcast(){
   if(S&&S.seats)S.on=onFlags();
@@ -248,7 +290,7 @@ function act(a){
 /* ---------- 연결 ---------- */
 function hostStart(c,state){
   role='host';code=c;S=state;
-  S.seats=[null,null,null];
+  fixN();S.seats=rng().map(function(){return null});
   try{history.replaceState(null,'','?room='+code)}catch(e){}
   status('방 여는 중…');
   peer=new Peer(PREFIX+code,window.PEER_OPTS);
@@ -288,7 +330,7 @@ function connectHost(){
   hostConn.on('open',function(){status('<b>연결됨</b> · 방 '+code)});
   hostConn.on('data',function(d){
     if(d&&d.t==='state'){
-      var old=S&&S.fid;S=d.S;if(!S.seats)S.seats=[null,null,null];syncSeat();
+      var old=S&&S.fid;S=d.S;fixN();syncSeat();
       if(S.flash&&S.fid!==old&&old!==undefined)toast(S.flash);
       render();
     }
@@ -301,16 +343,17 @@ function scheduleRetry(){clearTimeout(retryTimer);retryTimer=setTimeout(function
 function syncSeat(){
   if(!S||!S.seats)return;
   var mine=S.seats.indexOf(CID);
-  if(mine>=0){mySeat=mine;pending=null;ls(SEAT_KEY,code+':'+mine);return}
+  if(mine>=0){mySeat=mine;pending=null;ls(SEAT_KEY,code+':'+S.names[mine]);return}
   if(pending!==null){
     if(S.seats[pending]&&S.seats[pending]!==CID&&(!S.on||S.on[pending])){toast(S.names[pending]+' 자리는 이미 다른 사람이 골랐어요');pending=null}
     mySeat=null;return;
   }
   mySeat=null;
   var v=ls(SEAT_KEY);
-  if(v&&role==='guest'){var p=v.split(':');if(p[0]===code&&(!S.seats[+p[1]]||(S.on&&!S.on[+p[1]]))){pending=+p[1];act({t:'claim',i:pending})}}
+  if(v&&role==='guest'){var ix=seatFromKey(v);if(ix>=0&&(!S.seats[ix]||(S.on&&!S.on[ix]))){pending=ix;act({t:'claim',i:pending})}}
 }
-function restoreSeat(){var v=ls(SEAT_KEY);mySeat=null;if(v){var p=v.split(':');if(p[0]===code)mySeat=+p[1]}}
+function seatFromKey(v){var k=v.indexOf(':');if(k<0||v.slice(0,k)!==code)return -1;return S.names.indexOf(v.slice(k+1))}
+function restoreSeat(){var v=ls(SEAT_KEY);mySeat=null;if(v&&S){var ix=seatFromKey(v);if(ix>=0)mySeat=ix}}
 function pickSeat(i){
   if(S.seats&&S.seats[i]&&S.seats[i]!==CID&&(!S.on||S.on[i])){toast('이미 다른 사람이 고른 자리예요');return}
   pending=i;act({t:'claim',i:i});
@@ -335,7 +378,7 @@ function render(){
   $('turnNow').textContent=(T===mySeat?'내 차례예요!':'지금 차례: '+S.names[T]+' · '+S.names[starter()]+'부터 시작');
   if(T===mySeat&&render._lastTurn!==undefined&&render._lastTurn!==T){try{navigator.vibrate&&navigator.vibrate(150)}catch(e){}}
   render._lastTurn=T;
-  $('players').innerHTML=[0,1,2].map(function(i){
+  $('players').innerHTML=rng().map(function(i){
     var f=folded(i),mine=mySeat===i,a=avail(i),bt=bet(i),my=(T===i);
     var h='<div class="card'+(f?' folded':'')+(mine?' mine':'')+(my?' turn':'')+'">'+
       '<div class="p-head"><span class="p-name">'+esc(S.names[i])+(mine?'<span class="me">나</span>':'')+(f?'<span class="tag">다이</span>':'')+(my?'<span class="tt">차례</span>':'')+'</span>'+
@@ -362,14 +405,35 @@ function render(){
     }
     return h+'</div>';
   }).join('');
-  $('winBtns').innerHTML=[0,1,2].map(function(i){return '<button class="b-win" data-a="win" data-i="'+i+'"'+(folded(i)?' disabled':'')+'>'+esc(S.names[i])+'<br>승리</button>'}).join('');
+  $('winBtns').innerHTML=rng().map(function(i){return '<button class="b-win" data-a="win" data-i="'+i+'"'+(folded(i)?' disabled':'')+'>'+esc(S.names[i])+'<br>승리</button>'}).join('');
+  renderAdmin();
   $('log').innerHTML=S.log.length?S.log.map(function(l){return'<div>'+esc(l)+'</div>'}).join(''):'<span class="empty">아직 끝난 판이 없어요</span>';
 }
 
+function renderAdmin(){
+  var card=$('adminCard');
+  if(role!=='host'){card.classList.add('hidden');return}
+  card.classList.remove('hidden');
+  var locked=pot()>0;
+  var key=S.names.join('|')+'#'+locked;
+  var focused=document.activeElement&&card.contains(document.activeElement)&&document.activeElement.tagName==='INPUT';
+  if(renderAdmin._k!==key&&!focused){
+    renderAdmin._k=key;
+    $('adminList').innerHTML=S.names.map(function(n,i){
+      return '<div class="arow"><input type="text" maxlength="10" data-ren="'+i+'" value="'+esc(n)+'">'+
+        '<button class="b-add" data-a="ren" data-i="'+i+'">저장</button>'+
+        '<button class="b-sub" data-a="rm" data-i="'+i+'"'+((locked||N<=MINP)?' disabled':'')+'>삭제</button></div>';
+    }).join('');
+  }
+  $('addBtn').disabled=locked||N>=MAXP;
+  $('adminHint').textContent=locked?'인원 추가·삭제는 판돈이 0일 때만 할 수 있어요':(N>=MAXP?'최대 '+MAXP+'명까지예요':(N<=MINP?'최소 '+MINP+'명은 있어야 해요':''));
+}
 document.addEventListener('click',function(e){
   var b=e.target.closest('button[data-a]');if(!b||b.disabled)return;
   var i=+b.dataset.i,a=b.dataset.a;
   if(a==='seat')return pickSeat(i);
+  if(a==='ren'){var el=document.querySelector('input[data-ren="'+i+'"]');var v=el.value.trim();if(!v){toast('이름을 입력하세요');return}el.blur();renderAdmin._k=null;act({t:'rename',i:i,name:v});toast('이름을 바꿨어요');return}
+  if(a==='rm'){ask(S.names[i]+'님을 빼고 '+S.chips[i]+'개 칩도 함께 정리할까요?',function(){renderAdmin._k=null;act({t:'remove',i:i})});return}
   if(a!=='win'&&i!==mySeat)return;
   if(a==='bet')act({t:'bet',i:i,v:+b.dataset.v});
   else if(a==='all')act({t:'all',i:i});
@@ -379,12 +443,22 @@ document.addEventListener('click',function(e){
     ask(S.names[i]+'님이 판돈 '+t+'개를 가져갈까요?',function(){act({t:'win',w:i})})}
 });
 
+function setupNames(n){
+  var cur=[].map.call(document.querySelectorAll('#nameList input'),function(el){return el.value});
+  var h='';for(var i=0;i<n;i++)h+='<label>플레이어 '+(i+1)+'</label><input type="text" maxlength="10" value="'+esc(cur[i]!==undefined?cur[i]:'플레이어'+(i+1))+'">';
+  $('nameList').innerHTML=h;
+  $('setupMinus').disabled=n<=MINP;$('setupPlus').disabled=n>=MAXP;
+}
+setupNames(3);
+$('setupPlus').onclick=function(){setupNames(Math.min(MAXP,document.querySelectorAll('#nameList input').length+1))};
+$('setupMinus').onclick=function(){setupNames(Math.max(MINP,document.querySelectorAll('#nameList input').length-1))};
+$('addBtn').onclick=function(){var v=$('addName').value.trim();renderAdmin._k=null;act({t:'add',name:v});$('addName').value='';};
 $('createBtn').onclick=function(){
   var c=parseInt($('startChips').value,10);
   if(!c||c<1){toast('시작 칩은 1개 이상이어야 해요');return}
-  var names=[0,1,2].map(function(i){var v=$('n'+i).value.trim();return v||('플레이어'+(i+1))});
+  var names=[].map.call(document.querySelectorAll('#nameList input'),function(el,i){var v=el.value.trim();return v||('플레이어'+(i+1))});
   ls(SEAT_KEY,null);
-  hostStart(fixedCode||newCode(),{names:names,start:c,chips:[c,c,c],round:1,log:[],prev:null,bets:freshBets(),starter:0,turn:0});
+  N=names.length;hostStart(fixedCode||newCode(),{names:names,start:c,chips:names.map(function(){return c}),round:1,log:[],prev:null,bets:freshBets(),starter:0,turn:0});
 };
 $('joinBtn').onclick=function(){
   var c=$('codeIn').value.trim().toUpperCase();
