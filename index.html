@@ -147,7 +147,7 @@ h3{margin:0 0 10px;font-size:16px}
 <script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
 <script>
 var N=3, PREFIX='seotda-chips-kr-', HOST_KEY='seotda-host-v3', SEAT_KEY='seotda-seat-v3';
-var role=null, peer=null, hostConn=null, conns=[], code='', S=null, mySeat=null, retryTimer=null;
+var fixedCode=null,role=null, peer=null, hostConn=null, conns=[], code='', S=null, mySeat=null, retryTimer=null;
 
 function $(id){return document.getElementById(id)}
 function esc(s){return String(s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
@@ -314,7 +314,7 @@ $('createBtn').onclick=function(){
   if(!c||c<1){toast('시작 칩은 1개 이상이어야 해요');return}
   var names=[0,1,2].map(function(i){var v=$('n'+i).value.trim();return v||('플레이어'+(i+1))});
   ls(SEAT_KEY,null);
-  hostStart(newCode(),{names:names,start:c,chips:[c,c,c],round:1,log:[],prev:null,bets:freshBets()});
+  hostStart(fixedCode||newCode(),{names:names,start:c,chips:[c,c,c],round:1,log:[],prev:null,bets:freshBets()});
 };
 $('joinBtn').onclick=function(){
   var c=$('codeIn').value.trim().toUpperCase();
@@ -341,9 +341,16 @@ $('shareBtn').onclick=function(){
   var q=new URLSearchParams(location.search).get('room');
   var saved=null;try{saved=JSON.parse(ls(HOST_KEY))}catch(e){}
   if(typeof Peer==='undefined'){status('연결 모듈을 불러오지 못했어요. 인터넷 연결을 확인하고 새로고침하세요');}
+  var isHost=new URLSearchParams(location.search).get('host')==='1';
   if(q){
     q=q.toUpperCase();
     if(saved&&saved.code===q){hostStart(saved.code,saved.S);return}
+    if(isHost){
+      fixedCode=q;show('home');
+      $('codeIn').closest('.card').classList.add('hidden');
+      document.querySelector('.or').classList.add('hidden');
+      status('방장용 링크예요 · 이름과 칩을 넣고 방을 만드세요');return;
+    }
     $('codeIn').value=q;joinStart(q);status('방 '+q+'에 연결 중…');show('seat');$('seatBtns').innerHTML='<div style="color:#666;text-align:center">방 정보를 받는 중…</div>';return;
   }
   if(saved&&saved.S)$('resumeCard').classList.remove('hidden');
