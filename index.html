@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>섯다 칩 계산기</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#1f5132;color:#222;font-family:-apple-system,"Apple SD Gothic Neo","Noto Sans KR","Malgun Gothic",sans-serif;-webkit-tap-highlight-color:transparent}
+.wrap{max-width:520px;margin:0 auto;padding:16px 14px 40px}
+h1{color:#fff;text-align:center;font-size:24px;margin:6px 0 2px}
+.sub{color:#cfe3d4;text-align:center;font-size:13px;margin-bottom:10px}
+.status{color:#cfe3d4;text-align:center;font-size:13px;margin-bottom:12px;min-height:18px}
+.status b{color:#fff3c4}
+.card{background:#fffaf0;border-radius:14px;padding:14px;margin-bottom:12px}
+label{display:block;font-size:13px;color:#666;margin:8px 0 4px}
+input[type=text],input[type=number]{width:100%;font-size:17px;padding:10px 12px;border:1px solid #d9cdb4;border-radius:10px;background:#fff}
+#codeIn{font-size:26px;text-align:center;letter-spacing:6px;text-transform:uppercase}
+button{font-family:inherit;font-size:16px;border:none;border-radius:10px;padding:11px 10px;cursor:pointer;font-weight:600}
+button:disabled{opacity:.35;cursor:default}
+.primary{background:#c0392b;color:#fff;width:100%;font-size:18px;padding:14px;margin-top:14px}
+.secondary{background:#2c6fad;color:#fff;width:100%;font-size:18px;padding:14px;margin-top:10px}
+.room{text-align:center}
+.room .code{font-size:38px;font-weight:800;letter-spacing:8px;color:#1f5132}
+.room .btns{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+.pot{text-align:center;background:#fff3c4;border:2px solid #e0b43c}
+.pot .lbl{font-size:13px;color:#7a5b00}
+.pot .val{font-size:40px;font-weight:800;color:#7a5b00;line-height:1.1}
+.pot .hint{font-size:12px;color:#8a7a4a}
+.p-head{display:flex;justify-content:space-between;align-items:baseline}
+.p-name{font-size:19px;font-weight:800}
+.p-chips{font-size:15px;color:#555}
+.p-chips b{font-size:22px;color:#1f5132}
+.p-bet{margin:8px 0;font-size:15px;color:#555}
+.p-bet b{font-size:20px;color:#c0392b}
+.mine{border:3px solid #e0b43c}
+.me{font-size:12px;background:#e0b43c;color:#3a2a00;border-radius:6px;padding:2px 6px;margin-left:6px;vertical-align:middle}
+.row{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.b-add{background:#2c6fad;color:#fff}
+.b-sub{background:#e8e2d4;color:#333}
+.b-all{background:#7d3c98;color:#fff}
+.b-die{background:#e8e2d4;color:#333}
+.folded{opacity:.55}
+.tag{font-size:12px;background:#555;color:#fff;border-radius:6px;padding:2px 6px;margin-left:6px;vertical-align:middle}
+.win-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.b-win{background:#1f7a46;color:#fff;font-size:15px;padding:13px 4px}
+.b-redo{background:#e0b43c;color:#3a2a00;width:100%;margin-top:8px}
+.tools{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
+.b-tool{background:#e8e2d4;color:#333;font-size:13px;padding:11px 4px}
+.seat-grid{display:grid;gap:8px}
+.b-seat{background:#2c6fad;color:#fff;font-size:18px;padding:14px}
+h3{margin:0 0 10px;font-size:16px}
+.or{text-align:center;color:#cfe3d4;font-size:13px;margin:4px 0 12px}
+.log{font-size:14px;color:#444;max-height:240px;overflow:auto}
+.log div{padding:6px 0;border-bottom:1px solid #eadfca}
+.log div:last-child{border-bottom:none}
+.empty{color:#999;font-size:14px}
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:20px;z-index:10}
+.modal{background:#fffaf0;border-radius:14px;padding:18px;max-width:360px;width:100%;text-align:center}
+.modal p{font-size:16px;margin:4px 0 16px;line-height:1.5}
+.modal .btns{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#222;color:#fff;padding:10px 16px;border-radius:10px;font-size:15px;z-index:20;max-width:90%;text-align:center}
+.hidden{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>섯다 칩 계산기</h1>
+  <div class="sub">각자 휴대폰으로 베팅하고, 이긴 사람을 누르면 판돈이 몰아가요</div>
+  <div class="status" id="status"></div>
+
+  <div id="home">
+    <div class="card">
+      <h3>방 만들기 (방장)</h3>
+      <label>플레이어 1</label><input type="text" id="n0" value="플레이어1" maxlength="10">
+      <label>플레이어 2</label><input type="text" id="n1" value="플레이어2" maxlength="10">
+      <label>플레이어 3</label><input type="text" id="n2" value="플레이어3" maxlength="10">
+      <label>시작 칩 (1인당)</label><input type="number" id="startChips" value="100" min="1" inputmode="numeric">
+      <button class="primary" id="createBtn">방 만들기</button>
+    </div>
+    <div class="or">또는</div>
+    <div class="card">
+      <h3>방 참가</h3>
+      <input type="text" id="codeIn" maxlength="6" placeholder="방 코드" autocomplete="off" autocapitalize="characters">
+      <button class="secondary" id="joinBtn">참가하기</button>
+    </div>
+    <div class="card hidden" id="resumeCard">
+      <h3>이어서 하기</h3>
+      <div style="font-size:14px;color:#555">이 휴대폰에서 만든 방이 남아 있어요.</div>
+      <button class="secondary" id="resumeBtn">내 방 다시 열기</button>
+    </div>
+  </div>
+
+  <div id="seat" class="card hidden">
+    <h3>나는 누구예요?</h3>
+    <div class="seat-grid" id="seatBtns"></div>
+  </div>
+
+  <div id="game" class="hidden">
+    <div class="card room" id="roomCard">
+      <div style="font-size:13px;color:#666">방 코드</div>
+      <div class="code" id="roomCode"></div>
+      <div class="btns">
+        <button class="b-tool" id="shareBtn">초대 링크 보내기</button>
+        <button class="b-tool" id="copyBtn">링크 복사</button>
+      </div>
+    </div>
+
+    <div class="card pot">
+      <div class="lbl">판돈 · <span id="roundNo">1</span>판째</div>
+      <div class="val" id="potVal">0</div>
+      <div class="hint">내 카드(노란 테두리)에서 베팅하세요</div>
+    </div>
+
+    <div id="players"></div>
+
+    <div class="card">
+      <h3>이번 판 승자 선택</h3>
+      <div class="win-grid" id="winBtns"></div>
+      <button class="b-redo" id="redoBtn">재경기 (베팅한 칩 돌려주기)</button>
+    </div>
+
+    <div class="card">
+      <h3>기록</h3>
+      <div class="log" id="log"></div>
+    </div>
+
+    <div class="card tools">
+      <button class="b-tool" id="undoBtn">마지막 판<br>되돌리기</button>
+      <button class="b-tool" id="seatBtn">자리<br>바꾸기</button>
+      <button class="b-tool" id="resetBtn">칩<br>초기화</button>
+    </div>
+  </div>
+</div>
+
+<div id="modalBg" class="modal-bg hidden">
+  <div class="modal">
+    <p id="modalMsg"></p>
+    <div class="btns">
+      <button class="b-sub" id="modalNo">취소</button>
+      <button class="b-win" id="modalYes">확인</button>
+    </div>
+  </div>
+</div>
+<div id="toast" class="toast hidden"></div>
+
+<script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
+<script>
+var N=3, PREFIX='seotda-chips-kr-', HOST_KEY='seotda-host-v3', SEAT_KEY='seotda-seat-v3';
+var role=null, peer=null, hostConn=null, conns=[], code='', S=null, mySeat=null, retryTimer=null;
+
+function $(id){return document.getElementById(id)}
+function esc(s){return String(s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+function toast(m){var t=$('toast');t.textContent=m;t.classList.remove('hidden');clearTimeout(toast._t);toast._t=setTimeout(function(){t.classList.add('hidden')},2400)}
+function ask(msg,yes){$('modalMsg').textContent=msg;$('modalBg').classList.remove('hidden');
+  $('modalYes').onclick=function(){$('modalBg').classList.add('hidden');yes()};
+  $('modalNo').onclick=function(){$('modalBg').classList.add('hidden')}}
+function ls(k,v){try{if(v===undefined)return localStorage.getItem(k);if(v===null)localStorage.removeItem(k);else localStorage.setItem(k,v)}catch(e){return null}}
+function status(h){$('status').innerHTML=h}
+function show(id){['home','seat','game'].forEach(function(x){$(x).classList.toggle('hidden',x!==id)})}
+function newCode(){var a='ABCDEFGHJKLMNPQRSTUVWXYZ23456789',s='';for(var i=0;i<6;i++)s+=a[Math.floor(Math.random()*a.length)];return s}
+function link(){return location.origin+location.pathname+'?room='+code}
+
+function bet(i){return S.bets[i].bet}
+function folded(i){return S.bets[i].folded}
+function pot(){var t=0;for(var i=0;i<N;i++)t+=bet(i);return t}
+function avail(i){return S.chips[i]-bet(i)}
+function freshBets(){return [0,1,2].map(function(){return{bet:0,folded:false}})}
+function clone(o){return JSON.parse(JSON.stringify(o))}
+
+/* ---------- 방장: 상태 변경 ---------- */
+function apply(a){
+  if(!S)return;
+  var i=a.i;
+  if(a.t==='bet'){
+    if(folded(i))return;var amt=a.v;
+    if(amt>0)amt=Math.min(amt,avail(i));else amt=Math.max(amt,-bet(i));
+    if(!amt)return;S.bets[i].bet+=amt;
+  }else if(a.t==='all'){
+    if(folded(i))return;S.bets[i].bet=S.chips[i];
+  }else if(a.t==='fold'){
+    var f=!folded(i);
+    if(f){var alive=0;for(var k=0;k<N;k++)if(k!==i&&!folded(k))alive++;if(!alive)return}
+    S.bets[i].folded=f;
+  }else if(a.t==='win'){
+    var total=pot();if(!total||folded(a.w))return;
+    var bets=S.bets.map(function(b){return b.bet});
+    S.prev={chips:S.chips.slice(),round:S.round,log:S.log.slice(),bets:bets};
+    var detail=[0,1,2].filter(function(k){return bets[k]>0}).map(function(k){return S.names[k]+' '+bets[k]}).join(', ');
+    S.chips=S.chips.map(function(c,k){return c-bets[k]});S.chips[a.w]+=total;
+    S.log.unshift(S.round+'판: '+S.names[a.w]+' 승리, +'+total+'개 ('+detail+')');S.log=S.log.slice(0,50);
+    S.round++;S.bets=freshBets();S.flash=S.names[a.w]+'님 +'+total+'개!';S.fid=Date.now();
+  }else if(a.t==='redo'){
+    if(!pot())return;
+    S.log.unshift(S.round+'판: 재경기 (베팅 반환)');S.log=S.log.slice(0,50);S.bets=freshBets();
+  }else if(a.t==='undo'){
+    if(!S.prev)return;var p=S.prev;
+    S.chips=p.chips;S.round=p.round;S.log=p.log;S.bets=p.bets.map(function(b){return{bet:b,folded:false}});S.prev=null;
+  }else if(a.t==='reset'){
+    S.chips=[S.start,S.start,S.start];S.round=1;S.log=[];S.prev=null;S.bets=freshBets();
+  }
+  broadcast();
+}
+function broadcast(){
+  ls(HOST_KEY,JSON.stringify({code:code,S:S}));
+  conns.forEach(function(c){if(c.open)c.send({t:'state',S:S})});
+  render();
+}
+function act(a){
+  if(role==='host')apply(a);
+  else if(hostConn&&hostConn.open)hostConn.send(a);
+  else toast('방장과 연결이 끊겼어요. 다시 연결 중…');
+}
+
+/* ---------- 연결 ---------- */
+function hostStart(c,state){
+  role='host';code=c;S=state;
+  try{history.replaceState(null,'','?room='+code)}catch(e){}
+  status('방 여는 중…');
+  peer=new Peer(PREFIX+code,window.PEER_OPTS);
+  peer.on('open',function(){status('<b>방장</b> · 접속 0명');broadcast();restoreSeat();render()});
+  peer.on('connection',function(conn){
+    conn.on('open',function(){conns.push(conn);conn.send({t:'state',S:S});updHostStatus()});
+    conn.on('data',function(d){if(d&&d.t)apply(d)});
+    conn.on('close',function(){conns=conns.filter(function(x){return x!==conn});updHostStatus()});
+  });
+  peer.on('disconnected',function(){status('서버 연결이 끊겨 다시 연결 중…');setTimeout(function(){if(peer&&!peer.destroyed)peer.reconnect()},2000)});
+  peer.on('error',function(e){
+    if(e.type==='unavailable-id'){toast('같은 방이 이미 열려 있어요. 잠시 후 다시 시도하세요');status('방 코드가 사용 중이에요')}
+    else if(e.type==='network'||e.type==='server-error'||e.type==='socket-error')status('네트워크 문제로 다시 연결 중…');
+    else console.warn(e);
+  });
+}
+function updHostStatus(){var n=conns.filter(function(c){return c.open}).length;status('<b>방장</b> · 친구 '+n+'명 접속 중')}
+
+function joinStart(c){
+  role='guest';code=c.toUpperCase();
+  status('방 '+code+'에 연결 중…');
+  peer=new Peer(window.PEER_OPTS);
+  peer.on('open',connectHost);
+  peer.on('error',function(e){
+    if(e.type==='peer-unavailable'){status('방을 찾을 수 없어요. 코드를 확인하거나 방장 화면이 켜져 있는지 확인하세요');scheduleRetry()}
+    else if(e.type==='network'||e.type==='server-error'||e.type==='socket-error'){status('네트워크 문제로 다시 연결 중…');scheduleRetry()}
+    else console.warn(e);
+  });
+  peer.on('disconnected',function(){setTimeout(function(){if(peer&&!peer.destroyed)peer.reconnect()},2000)});
+}
+function connectHost(){
+  clearTimeout(retryTimer);
+  hostConn=peer.connect(PREFIX+code,{reliable:true});
+  hostConn.on('open',function(){status('<b>연결됨</b> · 방 '+code)});
+  hostConn.on('data',function(d){
+    if(d&&d.t==='state'){
+      var old=S&&S.fid;S=d.S;restoreSeat();
+      if(S.flash&&S.fid!==old&&old!==undefined)toast(S.flash);
+      render();
+    }
+  });
+  hostConn.on('close',function(){status('방장과 연결이 끊겼어요. 다시 연결 중…');scheduleRetry()});
+}
+function scheduleRetry(){clearTimeout(retryTimer);retryTimer=setTimeout(function(){if(peer&&!peer.destroyed&&!peer.disconnected)connectHost()},3000)}
+
+/* ---------- 화면 ---------- */
+function restoreSeat(){var v=ls(SEAT_KEY);mySeat=null;if(v){var p=v.split(':');if(p[0]===code)mySeat=+p[1]}}
+function pickSeat(i){mySeat=i;ls(SEAT_KEY,code+':'+i);render()}
+
+function render(){
+  if(!S){show('home');return}
+  if(mySeat===null){
+    show('seat');
+    $('seatBtns').innerHTML=S.names.map(function(n,i){return '<button class="b-seat" data-a="seat" data-i="'+i+'">'+esc(n)+'</button>'}).join('');
+    return;
+  }
+  show('game');
+  $('roomCode').textContent=code;
+  $('potVal').textContent=pot();$('roundNo').textContent=S.round;
+  $('players').innerHTML=[0,1,2].map(function(i){
+    var f=folded(i),mine=mySeat===i,a=avail(i),bt=bet(i);
+    var h='<div class="card'+(f?' folded':'')+(mine?' mine':'')+'">'+
+      '<div class="p-head"><span class="p-name">'+esc(S.names[i])+(mine?'<span class="me">나</span>':'')+(f?'<span class="tag">다이</span>':'')+'</span>'+
+      '<span class="p-chips">보유 <b>'+a+'</b>개</span></div>'+
+      '<div class="p-bet">이번 판 베팅: <b>'+bt+'</b>개</div>';
+    if(mine){
+      var off=(f||a<=0)?' disabled':'';
+      h+='<div class="row">'+
+        '<button class="b-add" data-a="bet" data-i="'+i+'" data-v="1"'+off+'>+1</button>'+
+        '<button class="b-add" data-a="bet" data-i="'+i+'" data-v="5"'+off+'>+5</button>'+
+        '<button class="b-add" data-a="bet" data-i="'+i+'" data-v="10"'+off+'>+10</button>'+
+        '<button class="b-sub" data-a="bet" data-i="'+i+'" data-v="-1"'+((f||!bt)?' disabled':'')+'>−1</button>'+
+      '</div><div class="row" style="grid-template-columns:1fr 1fr;margin-top:6px">'+
+        '<button class="b-all" data-a="all" data-i="'+i+'"'+off+'>올인</button>'+
+        '<button class="b-die" data-a="fold" data-i="'+i+'">'+(f?'다이 취소':'다이')+'</button></div>';
+    }
+    return h+'</div>';
+  }).join('');
+  $('winBtns').innerHTML=[0,1,2].map(function(i){return '<button class="b-win" data-a="win" data-i="'+i+'"'+(folded(i)?' disabled':'')+'>'+esc(S.names[i])+'<br>승리</button>'}).join('');
+  $('log').innerHTML=S.log.length?S.log.map(function(l){return'<div>'+esc(l)+'</div>'}).join(''):'<span class="empty">아직 끝난 판이 없어요</span>';
+}
+
+document.addEventListener('click',function(e){
+  var b=e.target.closest('button[data-a]');if(!b||b.disabled)return;
+  var i=+b.dataset.i,a=b.dataset.a;
+  if(a==='seat')return pickSeat(i);
+  if(a!=='win'&&i!==mySeat)return;
+  if(a==='bet')act({t:'bet',i:i,v:+b.dataset.v});
+  else if(a==='all')act({t:'all',i:i});
+  else if(a==='fold')act({t:'fold',i:i});
+  else if(a==='win'){var t=pot();if(!t){toast('판돈이 0이에요. 먼저 베팅하세요');return}
+    ask(S.names[i]+'님이 판돈 '+t+'개를 가져갈까요?',function(){act({t:'win',w:i})})}
+});
+
+$('createBtn').onclick=function(){
+  var c=parseInt($('startChips').value,10);
+  if(!c||c<1){toast('시작 칩은 1개 이상이어야 해요');return}
+  var names=[0,1,2].map(function(i){var v=$('n'+i).value.trim();return v||('플레이어'+(i+1))});
+  ls(SEAT_KEY,null);
+  hostStart(newCode(),{names:names,start:c,chips:[c,c,c],round:1,log:[],prev:null,bets:freshBets()});
+};
+$('joinBtn').onclick=function(){
+  var c=$('codeIn').value.trim().toUpperCase();
+  if(c.length!==6){toast('방 코드 6자리를 넣어 주세요');return}
+  history.replaceState(null,'','?room='+c);joinStart(c);
+};
+$('resumeBtn').onclick=function(){try{var d=JSON.parse(ls(HOST_KEY));hostStart(d.code,d.S)}catch(e){toast('저장된 방을 열 수 없어요')}};
+$('redoBtn').onclick=function(){if(!pot()){toast('돌려줄 베팅이 없어요');return}ask('재경기할까요? 베팅한 칩을 각자 돌려줘요.',function(){act({t:'redo'})})};
+$('undoBtn').onclick=function(){if(!S.prev){toast('되돌릴 판이 없어요');return}ask('마지막 판 결과를 취소하고 그 판 베팅 상태로 되돌릴까요?',function(){act({t:'undo'})})};
+$('resetBtn').onclick=function(){ask('모든 사람 칩을 '+S.start+'개로 되돌리고 기록을 지울까요?',function(){act({t:'reset'})})};
+$('seatBtn').onclick=function(){mySeat=null;ls(SEAT_KEY,null);render()};
+$('copyBtn').onclick=function(){
+  var l=link();
+  if(navigator.clipboard)navigator.clipboard.writeText(l).then(function(){toast('링크를 복사했어요')},function(){prompt('이 링크를 복사하세요',l)});
+  else prompt('이 링크를 복사하세요',l);
+};
+$('shareBtn').onclick=function(){
+  var l=link();
+  if(navigator.share)navigator.share({title:'섯다 칩 계산기',text:'섯다 방 코드 '+code,url:l}).catch(function(){});
+  else $('copyBtn').onclick();
+};
+
+(function init(){
+  var q=new URLSearchParams(location.search).get('room');
+  var saved=null;try{saved=JSON.parse(ls(HOST_KEY))}catch(e){}
+  if(typeof Peer==='undefined'){status('연결 모듈을 불러오지 못했어요. 인터넷 연결을 확인하고 새로고침하세요');}
+  if(q){
+    q=q.toUpperCase();
+    if(saved&&saved.code===q){hostStart(saved.code,saved.S);return}
+    $('codeIn').value=q;joinStart(q);status('방 '+q+'에 연결 중…');show('seat');$('seatBtns').innerHTML='<div style="color:#666;text-align:center">방 정보를 받는 중…</div>';return;
+  }
+  if(saved&&saved.S)$('resumeCard').classList.remove('hidden');
+  show('home');
+})();
+</script>
+</body>
+</html>
