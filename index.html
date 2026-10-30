@@ -326,11 +326,14 @@ function render(){
       '<div class="p-bet">이번 판 베팅: <b>'+bt+'</b>개</div>';
     if(mine){
       var off=(f||a<=0)?' disabled':'';
-      h+='<div class="row">'+
+      h+='<div class="row" style="grid-template-columns:repeat(3,1fr)">'+
         '<button class="b-add" data-a="bet" data-i="'+i+'" data-v="1"'+off+'>+1</button>'+
         '<button class="b-add" data-a="bet" data-i="'+i+'" data-v="5"'+off+'>+5</button>'+
         '<button class="b-add" data-a="bet" data-i="'+i+'" data-v="10"'+off+'>+10</button>'+
+      '</div><div class="row" style="grid-template-columns:repeat(3,1fr);margin-top:6px">'+
         '<button class="b-sub" data-a="bet" data-i="'+i+'" data-v="-1"'+((f||!bt)?' disabled':'')+'>−1</button>'+
+        '<button class="b-sub" data-a="bet" data-i="'+i+'" data-v="-5"'+((f||!bt)?' disabled':'')+'>−5</button>'+
+        '<button class="b-sub" data-a="bet" data-i="'+i+'" data-v="-10"'+((f||!bt)?' disabled':'')+'>−10</button>'+
       '</div><div class="row" style="grid-template-columns:1fr 1fr;margin-top:6px">'+
         '<button class="b-all" data-a="all" data-i="'+i+'"'+off+'>올인</button>'+
         '<button class="b-die" data-a="fold" data-i="'+i+'">'+(f?'다이 취소':'다이')+'</button></div>';
