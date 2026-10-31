@@ -41,6 +41,15 @@ button:disabled{opacity:.35;cursor:default}
 .arow input{font-size:16px;padding:8px 10px}
 .arow button{font-size:14px;padding:8px 10px}
 .wait{text-align:center;color:#7a6a4a;font-size:14px;margin-top:6px}
+.pot .lastact{font-size:13px;color:#7a5b00;margin-top:2px;min-height:16px}
+.optgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.b-opt{border:none;border-radius:10px;padding:11px 4px;font-size:16px;font-weight:700;color:#fff;background:#2c6fad;line-height:1.25}
+.b-opt small{display:block;font-size:12px;font-weight:600;opacity:.9}
+.b-opt.k-check,.b-opt.k-call{background:#1f7a46}
+.b-opt.k-allin{background:#7d3c98}
+.b-opt.k-die{background:#e8e2d4;color:#333}
+.tocall{font-size:14px;color:#555;margin:2px 0 8px}
+.tocall b{color:#c0392b}
 .pot .turnnow{font-size:16px;font-weight:700;color:#1f5132;margin-top:4px}
 .me{font-size:12px;background:#e0b43c;color:#3a2a00;border-radius:6px;padding:2px 6px;margin-left:6px;vertical-align:middle}
 .row{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
@@ -74,7 +83,7 @@ h3{margin:0 0 10px;font-size:16px}
 <body>
 <div class="wrap">
   <h1>섯다 칩 계산기</h1>
-  <div class="sub">각자 휴대폰으로 베팅하고, 이긴 사람을 누르면 판돈이 몰아가요</div>
+  <div class="sub">기본 판돈 자동 · 삥/콜/따당/하프/체크/다이 · 이긴 사람이 판돈 몽땅</div>
   <div class="status" id="status"></div>
 
   <div id="home">
@@ -86,6 +95,7 @@ h3{margin:0 0 10px;font-size:16px}
         <button class="b-add" id="setupPlus">+ 인원 추가</button>
       </div>
       <label>시작 칩 (1인당)</label><input type="number" id="startChips" value="100" min="1" inputmode="numeric">
+      <label>기본 판돈 (판마다 자동으로 걷는 칩)</label><input type="number" id="anteSet" value="2" min="0" inputmode="numeric">
       <button class="primary" id="createBtn">방 만들기</button>
     </div>
     <div class="or">또는</div>
@@ -119,7 +129,7 @@ h3{margin:0 0 10px;font-size:16px}
     <div class="card pot">
       <div class="lbl">판돈 · <span id="roundNo">1</span>판째</div>
       <div class="val" id="potVal">0</div>
-      <div class="turnnow" id="turnNow"></div>
+      <div class="turnnow" id="turnNow"></div><div class="lastact" id="lastAct"></div>
     </div>
 
     <div id="players"></div>
@@ -138,6 +148,11 @@ h3{margin:0 0 10px;font-size:16px}
         <button class="b-add" id="addBtn">추가</button>
       </div>
       <div class="wait" id="adminHint"></div>
+      <div class="row" style="grid-template-columns:1fr auto;margin-top:10px;align-items:center">
+        <label style="margin:0">기본 판돈 (판마다 자동으로 걷는 칩)</label><span></span>
+        <input type="number" id="anteIn" min="0" inputmode="numeric">
+        <button class="b-add" id="anteBtn">변경</button>
+      </div>
     </div>
 
     <div class="card">
@@ -222,40 +237,86 @@ function apply(a,from){
     return broadcast();
   }
   if(a.t==='release'){for(var k2=0;k2<N;k2++)if(S.seats[k2]===from)S.seats[k2]=null;return broadcast()}
-  if((a.t==='bet'||a.t==='all'||a.t==='fold'||a.t==='done')&&S.seats[i]!==from)return;
-  var unfold=(a.t==='fold'&&folded(i));
-  if((a.t==='bet'||a.t==='all'||a.t==='done'||(a.t==='fold'&&!unfold))&&turn()!==i)return;
-  if(a.t==='bet'){
-    if(folded(i))return;var amt=a.v;
-    if(amt>0)amt=Math.min(amt,avail(i));else amt=Math.max(amt,-bet(i));
-    if(!amt)return;S.bets[i].bet+=amt;
-  }else if(a.t==='all'){
-    if(folded(i))return;S.bets[i].bet=S.chips[i];
-  }else if(a.t==='fold'){
-    var f=!folded(i);
-    if(f){var alive=0;for(var k=0;k<N;k++)if(k!==i&&!folded(k))alive++;if(!alive)return}
-    S.bets[i].folded=f;
-    if(f)S.turn=nextActive(i);
-  }else if(a.t==='done'){
-    S.turn=nextActive(i);
-  }else if(a.t==='win'){
-    var total=pot();if(!total||folded(a.w))return;
-    var bets=S.bets.map(function(b){return b.bet});
-    S.prev={chips:S.chips.slice(),round:S.round,log:S.log.slice(),bets:bets,starter:starter(),turn:turn()};
-    var detail=rng().filter(function(k){return bets[k]>0}).map(function(k){return S.names[k]+' '+bets[k]}).join(', ');
-    S.chips=S.chips.map(function(c,k){return c-bets[k]});S.chips[a.w]+=total;
-    S.log.unshift(S.round+'판: '+S.names[a.w]+' 승리, +'+total+'개 ('+detail+')');S.log=S.log.slice(0,50);
-    S.round++;S.bets=freshBets();S.starter=(a.w+1)%N;S.turn=S.starter;S.flash=S.names[a.w]+'님 +'+total+'개!';S.fid=Date.now();
+  if(a.t==='act'){
+    if(S.seats[i]!==from||S.phase!=='bet'||turn()!==i||folded(i))return;
+    doAct(i,a.k);return broadcast();
+  }
+  if(a.t==='unfold'){return}
+  if(a.t==='win'){
+    if(!pot()||folded(a.w))return;
+    doWin(a.w,'');
   }else if(a.t==='redo'){
     if(!pot())return;
-    S.log.unshift(S.round+'판: 재경기 (베팅 반환)');S.log=S.log.slice(0,50);S.bets=freshBets();S.turn=starter();
+    S.prev=snap();
+    S.log.unshift(S.round+'판: 재경기 (베팅 반환)');S.log=S.log.slice(0,50);startRound();
   }else if(a.t==='undo'){
-    if(!S.prev)return;var p=S.prev;
-    S.chips=p.chips;S.round=p.round;S.log=p.log;S.bets=p.bets.map(function(b){return{bet:b,folded:false}});S.starter=p.starter||0;S.turn=(typeof p.turn==='number')?p.turn:S.starter;S.prev=null;
+    if(!S.prev)return;
+    var keep={seats:S.seats,on:S.on};S=S.prev;S.seats=keep.seats;S.on=keep.on;S.prev=null;fixN();
   }else if(a.t==='reset'){
-    S.chips=S.names.map(function(){return S.start});S.round=1;S.log=[];S.prev=null;S.bets=freshBets();S.starter=0;S.turn=0;
+    S.chips=S.names.map(function(){return S.start});S.round=1;S.log=[];S.prev=null;S.starter=0;startRound();
+  }else if(a.t==='ante'){
+    if(from!==CID)return;var v=parseInt(a.v,10);if(!(v>=0&&v<=1000))return;
+    S.ante=v;S.log.unshift('기본 판돈 '+v+'개로 변경');S.log=S.log.slice(0,50);
+    if(!S.acted)startRound();
   }
   broadcast();
+}
+function snap(){var c=clone(S);delete c.prev;return c}
+function maxBet(){var m=0;for(var i=0;i<N;i++)m=Math.max(m,bet(i));return m}
+function toCall(i){return Math.max(0,maxBet()-bet(i))}
+function isAllin(i){return !folded(i)&&avail(i)<=0}
+function alive(){return rng().filter(function(i){return !folded(i)})}
+function ante(){return (S&&typeof S.ante==='number')?S.ante:2}
+function startRound(){
+  S.bets=rng().map(function(i){var c=S.chips[i];return c>0?{bet:Math.min(ante(),c),folded:false}:{bet:0,folded:true}});
+  S.raised=false;S.acted=false;S.lastRaise=ante()||1;S.phase='bet';S.last='기본 판돈 '+ante()+'개씩 걷었어요';
+  if(starter()>=N)S.starter=0;
+  S.need=rng().filter(function(i){return !folded(i)&&!isAllin(i)});
+  if(alive().length<2||!S.need.length){S.phase='show';S.turn=-1;return}
+  var t=starter();for(var k=0;k<N;k++){var j=(starter()+k)%N;if(S.need.indexOf(j)>=0){t=j;break}}
+  S.turn=t;
+}
+function opts(i){
+  var tc=toCall(i),av=avail(i),p=pot(),o=[];
+  if(tc===0)o.push({k:'check',n:'체크',v:0});
+  if(tc>0)o.push({k:'call',n:'콜',v:Math.min(tc,av)});
+  if(!S.raised&&av>tc)o.push({k:'pping',n:'삥',v:Math.min(tc+(ante()||1),av)});
+  if(tc>0&&av>tc)o.push({k:'ddadang',n:'따당',v:Math.min(tc*2,av)});
+  var half=tc+Math.max(1,Math.floor((p+tc)/2));if(av>tc)o.push({k:'half',n:'하프',v:Math.min(half,av)});
+  if(av>0)o.push({k:'allin',n:'올인',v:av});
+  o.push({k:'die',n:'다이',v:0});
+  return o;
+}
+var KNAME={check:'체크',call:'콜',pping:'삥',ddadang:'따당',half:'하프',allin:'올인',die:'다이'};
+function doAct(i,k){
+  var o=opts(i).filter(function(x){return x.k===k})[0];if(!o)return;
+  var pre=snap();
+  S.acted=true;
+  var tc=toCall(i),raised=false;
+  if(k==='die'){S.bets[i].folded=true;S.last=S.names[i]+' 다이';}
+  else{
+    var before=maxBet();
+    S.bets[i].bet+=o.v;
+    if(bet(i)>before){raised=true;S.raised=true;S.lastRaise=bet(i)-before}
+    S.last=S.names[i]+' '+KNAME[k]+(o.v?' +'+o.v+'개':'')+(isAllin(i)&&k!=='allin'?' (올인)':'');
+  }
+  if(raised)S.need=rng().filter(function(j){return j!==i&&!folded(j)&&!isAllin(j)});
+  else S.need=S.need.filter(function(j){return j!==i});
+  S.need=S.need.filter(function(j){return !folded(j)&&!isAllin(j)});
+  var al=alive();
+  if(al.length===1){doWin(al[0],' (나머지 다이)',pre);return}
+  if(!S.need.length){S.phase='show';S.turn=-1;S.last+=' · 베팅 끝!';return}
+  for(var s=1;s<=N;s++){var j=(i+s)%N;if(S.need.indexOf(j)>=0){S.turn=j;break}}
+}
+function doWin(w,why,pre){
+  var total=pot();
+  S.prev=pre||snap();
+  var bets=S.bets.map(function(b){return b.bet});
+  var detail=rng().filter(function(k){return bets[k]>0}).map(function(k){return S.names[k]+' '+bets[k]}).join(', ');
+  S.chips=S.chips.map(function(c,k){return c-bets[k]});S.chips[w]+=total;
+  S.log.unshift(S.round+'판: '+S.names[w]+' 승리'+why+', +'+total+'개 ('+detail+')');S.log=S.log.slice(0,50);
+  S.round++;S.starter=(w+1)%N;S.flash=S.names[w]+'님 +'+total+'개!'+why;S.fid=Date.now();
+  startRound();
 }
 function admin(a){
   var nm=String(a.name||'').trim().slice(0,10);
@@ -263,18 +324,18 @@ function admin(a){
     if(!nm||a.i<0||a.i>=N)return;
     if(S.names[a.i]!==nm){S.log.unshift(S.names[a.i]+' → '+nm+' 이름 변경');S.log=S.log.slice(0,50);S.names[a.i]=nm}
   }else if(a.t==='add'){
-    if(N>=MAXP||pot()>0)return;
+    if(N>=MAXP||S.acted)return;
     nm=nm||('플레이어'+(N+1));
     S.names.push(nm);S.chips.push(S.start);S.bets.push({bet:0,folded:false});S.seats.push(null);
     S.log.unshift(nm+' 참가 (칩 '+S.start+'개)');S.log=S.log.slice(0,50);S.prev=null;
   }else if(a.t==='remove'){
-    if(N<=MINP||pot()>0||a.i<0||a.i>=N)return;
+    if(N<=MINP||S.acted||a.i<0||a.i>=N)return;
     S.log.unshift(S.names[a.i]+' 나감 (남은 칩 '+S.chips[a.i]+'개)');S.log=S.log.slice(0,50);
     ['names','chips','bets','seats'].forEach(function(k){S[k].splice(a.i,1)});
     if(turn()>a.i)S.turn--;if(starter()>a.i)S.starter--;
     S.prev=null;
   }
-  fixN();broadcast();
+  fixN();if(a.t!=='rename')startRound();broadcast();
 }
 function broadcast(){
   if(S&&S.seats)S.on=onFlags();
@@ -292,6 +353,7 @@ function act(a){
 function hostStart(c,state){
   role='host';code=c;S=state;
   fixN();S.seats=rng().map(function(){return null});
+  if(!S.phase)startRound();
   try{history.replaceState(null,'','?room='+code)}catch(e){}
   status('방 여는 중…');
   peer=new Peer(PREFIX+code,window.PEER_OPTS);
@@ -376,33 +438,27 @@ function render(){
   $('roomCode').textContent=code;
   $('potVal').textContent=pot();$('roundNo').textContent=S.round;
   var T=turn();
-  $('turnNow').textContent=(T===mySeat?'내 차례예요!':'지금 차례: '+S.names[T]+' · '+S.names[starter()]+'부터 시작');
+  var show_=S.phase==='show';
+  $('turnNow').textContent=show_?'베팅 끝! 패를 까고 아래에서 승자를 고르세요':(T===mySeat?'내 차례예요!':'지금 차례: '+S.names[T]+' · '+S.names[starter()]+'부터 시작');
+  $('lastAct').textContent=S.last||'';
   if(T===mySeat&&render._lastTurn!==undefined&&render._lastTurn!==T){try{navigator.vibrate&&navigator.vibrate(150)}catch(e){}}
   render._lastTurn=T;
   $('players').innerHTML=rng().map(function(i){
     var f=folded(i),mine=mySeat===i,a=avail(i),bt=bet(i),my=(T===i);
     var h='<div class="card'+(f?' folded':'')+(mine?' mine':'')+(my?' turn':'')+'">'+
-      '<div class="p-head"><span class="p-name">'+esc(S.names[i])+(mine?'<span class="me">나</span>':'')+(f?'<span class="tag">다이</span>':'')+(my?'<span class="tt">차례</span>':'')+'</span>'+
+      '<div class="p-head"><span class="p-name">'+esc(S.names[i])+(mine?'<span class="me">나</span>':'')+(f?'<span class="tag">다이</span>':'')+(isAllin(i)?'<span class="tag" style="background:#7d3c98">올인</span>':'')+(my?'<span class="tt">차례</span>':'')+'</span>'+
       '<span class="p-chips">보유 <b>'+a+'</b>개</span></div>'+
       '<div class="p-bet">이번 판 베팅: <b>'+bt+'</b>개</div>';
     if(mine&&f){
-      h+='<button class="b-die" style="width:100%" data-a="fold" data-i="'+i+'">다이 취소</button>';
+      h+='<div class="wait">이번 판은 다이했어요. 다음 판을 기다려 주세요</div>';
+    }else if(mine&&show_){
+      h+='<div class="wait">베팅이 끝났어요. 패를 까 보세요</div>';
     }else if(mine&&!my){
-      h+='<div class="wait">'+esc(S.names[T])+'님 차례예요. 기다려 주세요</div>';
+      h+='<div class="wait">'+(T>=0?esc(S.names[T])+'님 차례예요. 기다려 주세요':'')+'</div>';
     }else if(mine){
-      var off=(f||a<=0)?' disabled':'';
-      h+='<div class="row" style="grid-template-columns:repeat(3,1fr)">'+
-        '<button class="b-add" data-a="bet" data-i="'+i+'" data-v="1"'+off+'>+1</button>'+
-        '<button class="b-add" data-a="bet" data-i="'+i+'" data-v="5"'+off+'>+5</button>'+
-        '<button class="b-add" data-a="bet" data-i="'+i+'" data-v="10"'+off+'>+10</button>'+
-      '</div><div class="row" style="grid-template-columns:repeat(3,1fr);margin-top:6px">'+
-        '<button class="b-sub" data-a="bet" data-i="'+i+'" data-v="-1"'+((f||!bt)?' disabled':'')+'>−1</button>'+
-        '<button class="b-sub" data-a="bet" data-i="'+i+'" data-v="-5"'+((f||!bt)?' disabled':'')+'>−5</button>'+
-        '<button class="b-sub" data-a="bet" data-i="'+i+'" data-v="-10"'+((f||!bt)?' disabled':'')+'>−10</button>'+
-      '</div><div class="row" style="grid-template-columns:1fr 1fr;margin-top:6px">'+
-        '<button class="b-all" data-a="all" data-i="'+i+'"'+off+'>올인</button>'+
-        '<button class="b-die" data-a="fold" data-i="'+i+'">다이</button></div>'+
-        '<button class="b-done" data-a="done" data-i="'+i+'">베팅 완료 → '+esc(S.names[nextActive(i)])+' 차례</button>';
+      var tc=toCall(i);
+      h+='<div class="tocall">'+(tc>0?'콜하려면 <b>'+tc+'</b>개 더 걸어야 해요':'아직 아무도 올리지 않았어요')+'</div><div class="optgrid">'+
+        opts(i).map(function(o){return '<button class="b-opt k-'+o.k+'" data-a="act" data-k="'+o.k+'" data-i="'+i+'">'+o.n+(o.v?'<small>+'+o.v+'개</small>':'')+'</button>'}).join('')+'</div>';
     }
     return h+'</div>';
   }).join('');
@@ -416,7 +472,7 @@ function renderAdmin(){
   var card=$('adminCard');
   if(role!=='host'){card.classList.add('hidden');return}
   card.classList.remove('hidden');
-  var locked=pot()>0;
+  var locked=!!S.acted;
   var key=S.names.join('|')+'#'+locked;
   var focused=document.activeElement&&card.contains(document.activeElement)&&document.activeElement.tagName==='INPUT';
   if(renderAdmin._k!==key&&!focused){
@@ -428,7 +484,8 @@ function renderAdmin(){
     }).join('');
   }
   $('addBtn').disabled=locked||N>=MAXP;
-  $('adminHint').textContent=locked?'인원 추가·삭제는 판돈이 0일 때만 할 수 있어요':(N>=MAXP?'최대 '+MAXP+'명까지예요':(N<=MINP?'최소 '+MINP+'명은 있어야 해요':''));
+  if(document.activeElement!==$('anteIn'))$('anteIn').value=ante();
+  $('adminHint').textContent=locked?'인원 추가·삭제는 판이 시작되기 전(아무도 베팅하기 전)에만 돼요':(N>=MAXP?'최대 '+MAXP+'명까지예요':(N<=MINP?'최소 '+MINP+'명은 있어야 해요':''));
 }
 document.addEventListener('click',function(e){
   var b=e.target.closest('button[data-a]');if(!b||b.disabled)return;
@@ -437,11 +494,8 @@ document.addEventListener('click',function(e){
   if(a==='ren'){var el=document.querySelector('input[data-ren="'+i+'"]');var v=el.value.trim();if(!v){toast('이름을 입력하세요');return}el.blur();renderAdmin._k=null;act({t:'rename',i:i,name:v});toast('이름을 바꿨어요');return}
   if(a==='rm'){ask(S.names[i]+'님을 빼고 '+S.chips[i]+'개 칩도 함께 정리할까요?',function(){renderAdmin._k=null;act({t:'remove',i:i})});return}
   if(a!=='win'&&i!==mySeat)return;
-  if(a==='bet')act({t:'bet',i:i,v:+b.dataset.v});
-  else if(a==='all')act({t:'all',i:i});
-  else if(a==='fold')act({t:'fold',i:i});
-  else if(a==='done')act({t:'done',i:i});
-  else if(a==='win'){var t=pot();if(!t){toast('판돈이 0이에요. 먼저 베팅하세요');return}
+  if(a==='act'){var k=b.dataset.k;if(k==='allin'||k==='die'){ask((k==='allin'?'남은 칩을 전부 걸까요?':'이번 판을 포기(다이)할까요?'),function(){act({t:'act',i:i,k:k})});return}act({t:'act',i:i,k:k});return}
+  if(a==='win'){var t=pot();if(!t){toast('판돈이 0이에요. 먼저 베팅하세요');return}
     ask(S.names[i]+'님이 판돈 '+t+'개를 가져갈까요?',function(){act({t:'win',w:i})})}
 });
 
@@ -454,13 +508,14 @@ function setupNames(n){
 setupNames(3);
 $('setupPlus').onclick=function(){setupNames(Math.min(MAXP,document.querySelectorAll('#nameList input').length+1))};
 $('setupMinus').onclick=function(){setupNames(Math.max(MINP,document.querySelectorAll('#nameList input').length-1))};
+$('anteBtn').onclick=function(){var v=parseInt($('anteIn').value,10);if(!(v>=0)){toast('0 이상 숫자를 넣어 주세요');return}$('anteIn').blur();act({t:'ante',v:v});toast(S.acted?'다음 판부터 적용돼요':'기본 판돈을 바꿨어요')};
 $('addBtn').onclick=function(){var v=$('addName').value.trim();renderAdmin._k=null;act({t:'add',name:v});$('addName').value='';};
 $('createBtn').onclick=function(){
   var c=parseInt($('startChips').value,10);
   if(!c||c<1){toast('시작 칩은 1개 이상이어야 해요');return}
   var names=[].map.call(document.querySelectorAll('#nameList input'),function(el,i){var v=el.value.trim();return v||('플레이어'+(i+1))});
   ls(SEAT_KEY,null);
-  N=names.length;hostStart(fixedCode||newCode(),{names:names,start:c,chips:names.map(function(){return c}),round:1,log:[],prev:null,bets:freshBets(),starter:0,turn:0});
+  N=names.length;hostStart(fixedCode||newCode(),{names:names,start:c,chips:names.map(function(){return c}),round:1,log:[],prev:null,bets:freshBets(),starter:0,turn:0,ante:Math.max(0,parseInt($('anteSet').value,10)||0)});
 };
 $('joinBtn').onclick=function(){
   var c=$('codeIn').value.trim().toUpperCase();
