@@ -137,7 +137,7 @@ h3{margin:0 0 10px;font-size:16px}
 
     <div class="card">
       <h3>이번 판 승자 선택</h3>
-      <div class="win-grid" id="winBtns"></div>
+      <div class="wait" id="winHint" style="margin:0 0 6px"></div><div class="win-grid" id="winBtns"></div>
       <button class="b-redo" id="redoBtn">재경기 (베팅한 칩 돌려주기)</button>
     </div>
 
@@ -251,6 +251,7 @@ function apply(a,from){
     return broadcast();
   }
   if(a.t==='win'){
+    if(from!==CID)return;
     if(!pot()||folded(a.w))return;
     doWin(a.w,'');
   }else if(a.t==='redo'){
@@ -478,6 +479,8 @@ function render(){
     }
     return h+'</div>';
   }).join('');
+  $('winHint').textContent=role==='host'?'':'승자는 방장이 골라요. 패를 깐 뒤 방장에게 알려 주세요';
+  $('winBtns').classList.toggle('hidden',role!=='host');
   $('winBtns').innerHTML=rng().map(function(i){return '<button class="b-win" data-a="win" data-i="'+i+'"'+(folded(i)?' disabled':'')+'>'+esc(S.names[i])+'<br>승리</button>'}).join('');
   renderAdmin();
   $('newRoomBtn').classList.toggle('hidden',role!=='host');
